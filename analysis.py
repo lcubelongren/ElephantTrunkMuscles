@@ -106,6 +106,10 @@ class MuscleAnalysis:
         self.calculateVolumes(image)
         self.calculateLengths(image)
         self.calculateSurfaceAreas(image)
+        # post-process df
+        self.df = self.df.loc[:, ~self.df.columns.str.contains('^Unnamed')]  # remove index columns
+        self.df = self.df.loc[(self.df!=0).any(axis=1)].dropna(axis=0)  # remove rows with a zero
+        self.df.to_csv('analysis_output/{}.csv'.format(self.subfolder))
         print('Completed MuscleAnalysis')
         
         

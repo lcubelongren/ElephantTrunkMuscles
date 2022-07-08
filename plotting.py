@@ -28,8 +28,6 @@ def plotMuscleAnalysis(totalmuscleNum, volumes, lengths, surface_areas):
     
     
 df = pd.read_csv('analysis_output/muscles_p1.csv')
-df = df.loc[:, ~df.columns.str.contains('^Unnamed')]  # remove index columns
-df = df.loc[(df!=0).any(axis=1)].dropna(axis=0)  # remove rows with a zero
 plotMuscleAnalysis(len(df), df['volumes'], df['lengths'], df['surface areas'])
 
 
