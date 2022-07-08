@@ -1,3 +1,5 @@
+
 # large data files
-.arr
-.tif
+*.arr
+*.tif
+
