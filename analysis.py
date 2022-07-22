@@ -21,22 +21,22 @@ def crop2labels(img):
     
 def combineMuscleImages(volDir, subfolder, volShape):
     print('processing partition:', subfolder)
-    Vol = np.memmap('analysis_output/{}-temp.arr'.format(subfolder), mode='w+', dtype=np.uint16, shape=volShape)
-    outputVol = np.memmap('analysis_output/{}-combined.arr'.format(subfolder), mode='w+', dtype=np.uint16, shape=volShape)
+    outputVol = np.zeros(volShape, dtype=np.uint16)
     for p,path in enumerate(Path(volDir).rglob('*.h5am')):
         print('adding image:', path.name)
         with h5py.File(path, 'r') as f:
-            Vol[:] = f['amira']['dataset:0']['timestep:0'][()].squeeze()
+            Vol = f['amira']['dataset:0']['timestep:0'][()].squeeze()
             outputVol[:] = np.where(Vol > 1, (Vol - 1) + (p * 254), outputVol)
     io.imsave('analysis_output/{}-combined.tif'.format(subfolder), outputVol, check_contrast=False)
               
                 
 voxelSize = 0.0179999  # mm
         
-volDir = '/media/lukel/BT-Longren/TrunkMusclePaper/HOAS-BACKUP/segmentations/muscles/'
+#volDir = '/media/lukel/BT-Longren/TrunkMusclePaper/HOAS-BACKUP/segmentations/muscles'  # Linux machine
+volDir = 'F:\TrunkMusclePaper\HOAS-BACKUP\segmentations\muscles'  # Windows machine
 subfolder = 'muscles_p1'
 volShape = (1075, 2150, 2150)  # muscles_p1
-#combineMuscleImages(volDir, subfolder, volShape)  # return a single .tif volume
+combineMuscleImages(volDir, subfolder, volShape)  # return a single .tif volume
 
 print('Loading and cropping volume')
 inputVol_full = io.imread('analysis_output/{}-combined.tif'.format(subfolder))
@@ -113,8 +113,8 @@ class MuscleAnalysis:
         print('Completed MuscleAnalysis')
         
         
-MA = MuscleAnalysis(df, voxelSize, subfolder)
-MA.run(inputVol)
+#MA = MuscleAnalysis(df, voxelSize, subfolder)
+#MA.run(inputVol)
         
         
 class TrunkAnalysis:
