@@ -17,39 +17,42 @@ def crop2labels(img):
     ymin, ymax = np.where(y)[0][[0, -1]]
     zmin, zmax = np.where(z)[0][[0, -1]]
     return xmin, xmax, ymin, ymax, zmin, zmax
-    
-    
+
+
 def combineMuscleImages(volDir, subfolder, volShape):
     print('processing partition:', subfolder)
     outputVol = np.zeros(volShape, dtype=np.uint16)
     for p,path in enumerate(Path(volDir).rglob('*.h5am')):
         print('adding image:', path.name)
         with h5py.File(path, 'r') as f:
-            Vol = f['amira']['dataset:0']['timestep:0'][()].squeeze()
-            outputVol[:] = np.where(Vol > 1, (Vol - 1) + (p * 254), outputVol)
+            Vol = f['amira']['dataset:0']['timestep:0'][()].squeeze().astype(np.uint16)
+            newVol = Vol + (p * (2**8 - 2)) - 1
+            outputVol[:] = np.where(Vol > 1, newVol, outputVol)
     io.imsave('analysis_output/{}-combined.tif'.format(subfolder), outputVol, check_contrast=False)
-              
-                
+    print('finished combining label files')
+ 
+
 voxelSize = 0.0179999  # mm
-        
+
 #volDir = '/media/lukel/BT-Longren/TrunkMusclePaper/HOAS-BACKUP/segmentations/muscles'  # Linux machine
 volDir = 'F:\TrunkMusclePaper\HOAS-BACKUP\segmentations\muscles'  # Windows machine
-subfolder = 'muscles_p1'
+#subfolder = 'muscles_p1'
+subfolder = 'muscles_p2'
 volShape = (1075, 2150, 2150)  # muscles_p1
-combineMuscleImages(volDir, subfolder, volShape)  # return a single .tif volume
+combineMuscleImages(volDir, subfolder, volShape)  # save to a single .tif volume
+
+try:
+    df = pd.read_csv('analysis_output/{}.csv'.format(subfolder), index_col=0)
+    print('read existing .csv')
+except:
+    df = pd.DataFrame()
+    print('created new .csv')
 
 print('Loading and cropping volume')
 inputVol_full = io.imread('analysis_output/{}-combined.tif'.format(subfolder))
 xmin, xmax, ymin, ymax, zmin, zmax = crop2labels(inputVol_full)
 inputVol = inputVol_full[xmin:xmax, ymin:ymax, zmin:zmax]
 print('Input volume partition shape:', inputVol.shape)
-
-try:
-    df = pd.read_csv('analysis_output/{}.csv'.format(subfolder))
-    print('read existing .csv')
-except:
-    df = pd.DataFrame()
-    print('created new .csv')  
 
 
 class MuscleAnalysis:
@@ -65,20 +68,21 @@ class MuscleAnalysis:
         values, counts = np.unique(image, return_counts=True)
         volumes = counts[1:] * self.voxelSize**3
         self.muscleNum = len(volumes)
+        self.df = self.df.reindex(values[1:])
         self.df['volumes'] = volumes
         
     def calculateLengths(self, image):
-        for i in range(self.muscleNum):
+        for i in range(1, self.muscleNum + 1):
             if i in [250, 773]: continue  # error: negative number in skan
             
-            print('Calculating length of muscle: {}/{}'.format(i + 1, self.muscleNum))
+            print('Calculating length of muscle: {}/{}'.format(i, self.muscleNum))
             try:
                 if self.df.at[i, 'lengths'] > 0:
                     print('-> skipping, already filled')
                     continue
             except:
                 pass
-            skeleton = morphology.skeletonize_3d(image == i + 1)
+            skeleton = morphology.skeletonize_3d(image == i)
             S = skan.csr.Skeleton(skeleton, spacing=self.voxelSize)
             length = np.nanmax(S.path_lengths())
             # save each iteration
@@ -86,15 +90,15 @@ class MuscleAnalysis:
             self.df.to_csv('analysis_output/{}.csv'.format(self.subfolder))
             
     def calculateSurfaceAreas(self, image):
-        for i in range(self.muscleNum):
-            print('Calculating surface area of muscle: {}/{}'.format(i + 1, self.muscleNum))
+        for i in range(1, self.muscleNum + 1):
+            print('Calculating surface area of muscle: {}/{}'.format(i, self.muscleNum))
             try:
                 if self.df.at[i, 'surface areas'] > 0:
                     print('-> skipping, already filled')
                     continue
             except:
                 pass
-            mask = image == i + 1
+            mask = image == i
             spacing = (self.voxelSize, self.voxelSize, self.voxelSize)
             verts, faces, normals, values = measure.marching_cubes(mask, spacing=spacing)
             area = measure.mesh_surface_area(verts, faces)
@@ -107,16 +111,15 @@ class MuscleAnalysis:
         self.calculateLengths(image)
         self.calculateSurfaceAreas(image)
         # post-process df
-        self.df = self.df.loc[:, ~self.df.columns.str.contains('^Unnamed')]  # remove index columns
-        self.df = self.df.loc[(self.df!=0).any(axis=1)].dropna(axis=0)  # remove rows with a zero
+        #self.df = self.df.loc[:, ~self.df.columns.str.contains('^Unnamed')]  # remove index columns
         self.df.to_csv('analysis_output/{}.csv'.format(self.subfolder))
         print('Completed MuscleAnalysis')
-        
-        
+
+
 #MA = MuscleAnalysis(df, voxelSize, subfolder)
 #MA.run(inputVol)
-        
-        
+
+
 class TrunkAnalysis:
 
     def __init__(self, voxelSize):
