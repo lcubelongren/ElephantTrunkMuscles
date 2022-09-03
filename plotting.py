@@ -4,6 +4,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.decomposition import PCA, KernelPCA
+from sklearn.cluster import AgglomerativeClustering
 import itertools
 
 
@@ -13,8 +14,9 @@ workingDir = 'D:\Luke\ElephantTrunkMuscles'
 def plotMetricsAll(df):
     totalmuscleNum = len(df['index'])
     normalized_df = (df - df.min()) / (df.max() - df.min())
-    ax = sns.stripplot(data=normalized_df.drop(columns=['index']), size=1)
-    ax.set_title('Individual muscle measurements - $n={}$'.format(totalmuscleNum))
+    fig, axs = plt.subplots(1, 1, figsize=(22,4))
+    ax = sns.stripplot(data=normalized_df.drop(columns=['index']), size=1, color='k', ax=axs)
+    ax.set_title('All metrics of individual muscles - $n={}$'.format(totalmuscleNum))
     ax.set_ylabel('normalized value')
     fig = ax.get_figure()
     fig.savefig(workingDir + '\plotting_output\MetricsAll.png')
@@ -35,7 +37,7 @@ def plotMetricsSize(totalmuscleNum, lengths, surface_areas, volumes):
         axs[i].set_ylabel('{} [${}$]'.format(names[k], units[k]))
         axs[i].axis('tight')
         axs[i].legend()
-    plt.suptitle('Individual muscle measurements - $n={}$'.format(totalmuscleNum))
+    plt.suptitle('Shape metrics of individual muscles - $n={}$'.format(totalmuscleNum))
     plt.tight_layout()
     plt.subplots_adjust(top=0.9)
     plt.savefig(workingDir + '\plotting_output\MetricsSize.png')
@@ -44,7 +46,7 @@ def plotMetricsSize(totalmuscleNum, lengths, surface_areas, volumes):
 def plotMetricsDR(df):
     totalmuscleNum = len(df['index'])
     normalized_df = (df - df.min()) / (df.max() - df.min())
-    X = normalized_df.drop(columns=['index', 'OrientationPhi'])
+    X = normalized_df.drop(columns=['index'])
     pca = PCA(n_components=2)
     X_pca = pca.fit_transform(X)
     kpca = KernelPCA(n_components=None, kernel='rbf', gamma=10, fit_inverse_transform=True, alpha=0.1)
@@ -59,18 +61,37 @@ def plotMetricsDR(df):
     [axs[i].axis('square') for i in range(2)]
     plt.suptitle('Dimensionality reduction - $n={}$'.format(totalmuscleNum))
     plt.tight_layout()
-    plt.subplots_adjust(top=0.85, bottom=0.2)
+    plt.subplots_adjust(top=0.85, bottom=0.3)
     plt.figtext(0.5, 0.03, 'Included metrics: ' + str(X.columns.values), 
                 ha='center', fontsize=9, bbox={'alpha': 0.5, 'pad': 5})
     plt.savefig(workingDir + '\plotting_output\MetricsDR.png')
+    return X_pca
 
 
-df_fname = workingDir + r'\analysis_output\muscles_p1-combined.Label-Analysis.csv'
-df = pd.read_csv(df_fname, skiprows=1).drop(columns=['Materials'])
-df = df[np.isfinite(df).all(True)]  # remove rows with inf
+def plotMetricsClustering(X, index):
+    totalmuscleNum = len(X)
+    clustering = AgglomerativeClustering(linkage='ward').fit(X)
+    df = pd.DataFrame()
+    df['index'] = index
+    df['MuscleClass'] = clustering.labels_
+    df.to_csv(workingDir + r'/analysis_output/{}.csv'.format('muscles_p1-classes'), columns=['MuscleClass', 'index'])
+    plt.figure(figsize=(4,4))
+    plt.scatter(X[:,0], X[:,1], c=df['MuscleClass'], s=2)
+    plt.suptitle('Hierarchical clustering - $n={}$'.format(totalmuscleNum))
+    plt.xlabel('$PC_1$')
+    plt.ylabel('$PC_2$')
+    plt.axis('square')
+    plt.tight_layout()
+    plt.savefig(workingDir + '\plotting_output\MetricsClustering.png')
+
+
+df_fname = workingDir + r'/analysis_output/muscles_p1-final.Label-Analysis.csv'
+df = pd.read_csv(df_fname, skiprows=1)
+df = df[df['Volume3d'] != 0]  # remove indices with zero volume
 plotMetricsAll(df)
-plotMetricsSize(len(df['index']), df['Length3d'], df['VoxelFaceArea'], df['Volume3d'])
-plotMetricsDR(df)
+#plotMetricsSize(len(df['index']), df['Length3d'], df['Area3d'], df['Volume3d'])
+X = plotMetricsDR(df)
+plotMetricsClustering(X, index=df['index'])
 
 
 

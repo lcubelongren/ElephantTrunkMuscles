@@ -9,6 +9,9 @@ import skan
 import pandas as pd
 
 
+workingDir = 'D:\Luke\ElephantTrunkMuscles'
+
+
 def crop2labels(img):
     x = np.any(img, axis=(1, 2))
     y = np.any(img, axis=(0, 2))
@@ -22,7 +25,10 @@ def crop2labels(img):
 def combineMuscleImages(volDir, subfolder, volShape):
     print('processing partition:', subfolder)
     outputVol = np.zeros(volShape, dtype=np.uint16)
-    for p,path in enumerate(Path(volDir).rglob('*.h5am')):
+    print(volDir + '/' + subfolder)
+    paths = Path(volDir + '/' + subfolder).rglob('*.h5am')
+    print('combining a total of {} label volumes'.format(len(list(paths))))
+    for p,path in enumerate(Path(volDir + '/' + subfolder).rglob('*.h5am')):  # (paths)
         print('adding image:', path.name)
         with h5py.File(path, 'r') as f:
             Vol = f['amira']['dataset:0']['timestep:0'][()].squeeze().astype(np.uint16)
@@ -35,24 +41,43 @@ def combineMuscleImages(volDir, subfolder, volShape):
 voxelSize = 0.0179999  # mm
 
 #volDir = '/media/lukel/BT-Longren/TrunkMusclePaper/HOAS-BACKUP/segmentations/muscles'  # Linux machine
-volDir = 'F:\TrunkMusclePaper\HOAS-BACKUP\segmentations\muscles'  # Windows machine
-#subfolder = 'muscles_p1'
-subfolder = 'muscles_p2'
+volDir = 'F:/TrunkMusclePaper/HOAS-BACKUP/segmentations/tip'  # Windows machine
+subfolder = 'muscles_p1'  # tip
+#subfolder = 'muscles_p2'  # medial
+#subfolder = 'muscles_p3'  # posterior
 volShape = (1075, 2150, 2150)  # muscles_p1
-combineMuscleImages(volDir, subfolder, volShape)  # save to a single .tif volume
+#combineMuscleImages(volDir, subfolder, volShape)  # save to a single .tif volume
 
-try:
-    df = pd.read_csv('analysis_output/{}.csv'.format(subfolder), index_col=0)
-    print('read existing .csv')
-except:
-    df = pd.DataFrame()
-    print('created new .csv')
+# ----------
 
-print('Loading and cropping volume')
-inputVol_full = io.imread('analysis_output/{}-combined.tif'.format(subfolder))
-xmin, xmax, ymin, ymax, zmin, zmax = crop2labels(inputVol_full)
-inputVol = inputVol_full[xmin:xmax, ymin:ymax, zmin:zmax]
-print('Input volume partition shape:', inputVol.shape)
+def combineMuscleClass(subfolder='muscles_p1'):
+    print('mapping predicted class values to each muscle in partition {}'.format(subfolder))
+    labelVol = np.fromfile(r'D:\Luke\current\muscles_p1_analysis-files\muscles_p1-final.raw', dtype=np.uint16)
+    labelVol = np.reshape(labelVol, volShape)
+    labels = np.unique(labelVol)
+    classes0 = pd.read_csv(workingDir + '/analysis_output/{}-classes.csv'.format(subfolder))['MuscleClass']
+    classes = np.append([0], np.array(classes0) + 1)
+    from skimage.util._map_array import map_array
+    outputVol = map_array(labelVol, labels, classes).astype(np.uint8)
+    io.imsave(workingDir + '/analysis_output/{}-classes.tif'.format(subfolder), outputVol, check_contrast=False)
+
+
+combineMuscleClass()
+
+# ----------
+
+# try:
+#     df = pd.read_csv('analysis_output/{}.csv'.format(subfolder), index_col=0)
+#     print('read existing .csv')
+# except:
+#     df = pd.DataFrame()
+#     print('created new .csv')
+
+# print('Loading and cropping volume')
+# inputVol_full = io.imread('analysis_output/{}-combined.tif'.format(subfolder))
+# xmin, xmax, ymin, ymax, zmin, zmax = crop2labels(inputVol_full)
+# inputVol = inputVol_full[xmin:xmax, ymin:ymax, zmin:zmax]
+# print('Input volume partition shape:', inputVol.shape)
 
 
 class MuscleAnalysis:
