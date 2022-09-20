@@ -1,23 +1,17 @@
 
-from tkinter import N
-from turtle import distance
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.decomposition import PCA, KernelPCA, TruncatedSVD, FactorAnalysis
-from sklearn.cluster import AgglomerativeClustering, DBSCAN, KMeans, SpectralClustering, OPTICS, BisectingKMeans
-from sklearn.mixture import GaussianMixture
-import itertools
-
-from sklearn.random_projection import SparseRandomProjection
+from sklearn.decomposition import PCA
+from scipy import stats
 
 
 workingDir = 'D:\Luke\ElephantTrunkMuscles'
 tip_voxelSize = 0.0179999  # mm
 
 plt.rcParams['font.family'] = 'Arial'
-plt.rc('font', size=14)
+plt.rc('font', size=18)
 
 
 class TipDorsal:
@@ -45,17 +39,16 @@ class TipDorsal:
         df_class['MuscleClass'] = [int(checkPoint(x, y) > 0) for x,y in zip(self.X[:,0], self.X[:,1])]
 
         df_class.to_csv(workingDir + r'/analysis_output/{}.csv'.format('muscles_p1-classes'), columns=['MuscleClass', 'index'])
-        plt.figure(dpi=400)
+        plt.figure(figsize=(5,5), dpi=500)
         markers = ['<', '>']
         colors = ['tab:orange', 'tab:blue']
         for i in np.unique(df_class['MuscleClass']):
             mask = df_class['MuscleClass'] == i
-            plt.scatter(self.X[mask,0], self.X[mask,1], marker=markers[i], c=colors[i], s=5)
+            plt.scatter(self.X[mask,0], self.X[mask,1], marker=markers[i], c=colors[i], s=20)
         plt.plot(pointsX, pointsY, c='k', ls='--', lw=1, label='$y={:.2f}x+{:.2f}$'.format(m, c))
         plt.xlabel('$PC_1$')
         plt.ylabel('$PC_2$')
         plt.axis('square')
-        plt.legend(loc='upper right')
         plt.xlim([-0.6, 0.9])
         plt.ylim([-0.2, 1.3])
         plt.tight_layout()
@@ -75,7 +68,7 @@ class TipDorsal:
         self.plotMetricsClustering(df)
 
 TD = TipDorsal()
-TD.run()
+#TD.run()
 
 
 # ------------------------------------
@@ -106,17 +99,16 @@ class TipVentral:
         df_class['MuscleClass'] = [int(checkPoint(x, y) > 0) for x,y in zip(self.X[:,0], self.X[:,1])]
 
         df_class.to_csv(workingDir + r'/analysis_output/{}.csv'.format('muscles_p1-classes'), columns=['MuscleClass', 'index'])
-        plt.figure(dpi=400)
+        plt.figure(figsize=(5,5), dpi=500)
         markers = ['^', 'v']
         colors = ['tab:orange', 'tab:blue']
         for i in np.unique(df_class['MuscleClass']):
             mask = df_class['MuscleClass'] == i
-            plt.scatter(self.X[mask,0], self.X[mask,1], marker=markers[i], c=colors[i], s=5)
+            plt.scatter(self.X[mask,0], self.X[mask,1], marker=markers[i], c=colors[i], s=20)
         plt.plot(pointsX, pointsY, c='k', ls='--', lw=1, label='$y={:.2f}x+{:.2f}$'.format(m, c))
         plt.xlabel('$PC_1$')
         plt.ylabel('$PC_2$')
         plt.axis('square')
-        plt.legend(loc='upper right')
         plt.xlim([-0.6, 0.7])
         plt.ylim([-0.3, 1.0])
         plt.tight_layout()
@@ -138,6 +130,9 @@ TV = TipVentral()
 # ------------------------------------
 
 
+plt.rc('font', size=16)
+
+
 class TipShared:
     def __init__(self):
         pass
@@ -145,24 +140,49 @@ class TipShared:
     def plotMetricsTip(self):
         df_metrics_dorsal = pd.read_csv(r'D:\Luke\current\IMPORTANT\tip_dorsal\muscles_p1-dorsal.Label-Analysis_Metrics.csv', skiprows=1)
         df_metrics_ventral = pd.read_csv(r'D:\Luke\current\IMPORTANT\tip_ventral\muscles_p1-ventral.Label-Analysis_Metrics.csv', skiprows=1)
+        df_metrics_ventral['index'] += len(df_metrics_dorsal['Length3d'])
+
         df_classes_dorsal = pd.read_csv(r'D:\Luke\current\IMPORTANT\tip_dorsal\muscles_p1-dorsal.classes.csv')
         df_classes_ventral = pd.read_csv(r'D:\Luke\current\IMPORTANT\tip_ventral\muscles_p1-ventral.classes.csv')
+        df_metrics_ventral['index'] += len(df_classes_dorsal['MuscleClass'])
+        df_metrics_dorsal['MuscleClass'] = df_classes_dorsal['MuscleClass']
+        df_metrics_ventral['MuscleClass'] = df_classes_ventral['MuscleClass']
 
-        df_length = pd.concat([df_metrics_dorsal[['Length3d']].rename(columns={'Length3d': 'Dorsal'}), 
-                               df_metrics_ventral[['Length3d']].rename(columns={'Length3d': 'Ventral'})], axis=1) * tip_voxelSize
-        df_volume = pd.concat([df_metrics_dorsal[['Volume3d']].rename(columns={'Volume3d': 'Dorsal'}), 
-                               df_metrics_ventral[['Volume3d']].rename(columns={'Volume3d': 'Ventral'})], axis=1) * tip_voxelSize**3
+        df_length = pd.concat([df_metrics_dorsal[['Length3d', 'MuscleClass']], 
+                               df_metrics_ventral[['Length3d', 'MuscleClass']]]).reset_index()
+        df_length['index'] = df_length.index
+        df_length['Region'] = np.where(df_length.index < len(df_metrics_dorsal), 'Dorsal', 'Ventral')
+        df_length['Length3d'] *= tip_voxelSize
 
-        fig, axs = plt.subplots(2, 1, figsize=(8,6))
-        sns.boxplot(data=df_length, fliersize=0, color='w', orient='h', ax=axs[0])
-        sns.stripplot(data=df_length, size=4, color='k', orient='h', ax=axs[0])
-        axs[0].set_xlabel(r'length [$mm$]')
-        axs[0].set_xlim([0, 12])
+        df_volume = pd.concat([df_metrics_dorsal[['Volume3d', 'MuscleClass']], 
+                               df_metrics_ventral[['Volume3d', 'MuscleClass']]]).reset_index()
+        df_volume['index'] = df_volume.index
+        df_volume['Region'] = np.where(df_volume.index < len(df_metrics_dorsal), 'Dorsal', 'Ventral')
+        df_volume['Volume3d'] *= tip_voxelSize**3
 
-        sns.boxplot(data=df_volume, fliersize=0, color='w', orient='h', ax=axs[1])
-        sns.stripplot(data=df_volume, size=4, color='k', orient='h', ax=axs[1])
-        axs[1].set_xlabel(r'volume [$mm^3$]')
-        axs[1].set_xlim([0, 0.55])
+        dfs = [df_length, df_volume]
+        metrics1 = ['Length3d', 'Volume3d']
+        metrics2 = [r'length [$mm$]', r'volume [$mm^3$]']
+        xlims = [[0, 12], [0, 0.55]]
+
+        fig, axs = plt.subplots(2, 1, figsize=(6,6), dpi=500)
+        for i in range(len(metrics1)):
+            sns.boxplot(data=dfs[i].drop(columns=['MuscleClass']), x=metrics1[i], y='Region', width=0.9, fliersize=0, color='w', orient='h', ax=axs[i])
+            markers = ['X', 'o']
+            colors = ['tab:orange', 'tab:blue']
+            for j in np.unique(dfs[i]['MuscleClass']):
+                sns.stripplot(data=dfs[i].where(dfs[i]['MuscleClass'] == j), x=metrics1[i], y='Region', marker=markers[j], color=colors[j],
+                              size=3.5, jitter=0.3, orient='h', ax=axs[i])
+            axs[i].set_xlabel(metrics2[i])
+            axs[i].set_ylabel(None)
+            axs[i].set_xlim(xlims[i])
+            axs[i].legend([],[], frameon=False)
+
+            statistic, pvalue = stats.ttest_ind(dfs[i].where(dfs[i]['Region'] == 'Dorsal').dropna()[metrics1[i]], 
+                                                dfs[i].where(dfs[i]['Region'] == 'Ventral').dropna()[metrics1[i]], 
+                                                equal_var=False, alternative='two-sided')
+            print(metrics1[i], pvalue)
+
         fig.tight_layout()
         fig.savefig(workingDir + '\plotting_output\MetricsTip.png')
 
@@ -170,5 +190,5 @@ class TipShared:
         self.plotMetricsTip()
 
 TS = TipShared()
-#TS.run()
+TS.run()
 
